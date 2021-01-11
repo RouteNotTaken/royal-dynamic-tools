@@ -1,0 +1,24 @@
+{
+  "Name": "Dynamic Folder Export",
+  "Objects": [
+    {
+      "Type": "DynamicFolder",
+      "Name": "ImportLibreNMS",
+      "CustomProperties": [
+        {
+          "Name": "libreHostname",
+          "Type": "Text",
+          "Value": "TODO"
+        },
+        {
+          "Name": "libreAPIKey",
+          "Type": "Protected",
+          "Value": "TODO"
+        }
+      ],
+      "ScriptInterpreter": "python",
+      "DynamicCredentialScriptInterpreter": "json",
+      "Script": "#! /usr/bin/env python3\nimport json\nimport requests\nfrom requests import exceptions\n\n''' Reference rJSON:\n{\n    \"Objects\": [\n        {\n            \"Type\": \"Folder\",\n            \"Name\": \"Springfield\",\n            \"Objects\": [\n                {\n                    \"Type\": \"TerminalConnection\",\n                    \"TerminalConnectionType\": \"SSH\",\n                    \"Name\": \"moes-core-1\",\n                    \"ComputerName\": \"moes-core-1\",\n                    \"CredentialsFromParent\": true\n                },\n                {\n                    \"Type\": \"TerminalConnection\",\n                    \"TerminalConnectionType\": \"SSH\",\n                    \"Name\": \"plant-core-1\",\n                    \"ComputerName\": \"plant-core-1\",\n                    \"CredentialsFromParent\": true\n                }\n            ]\n        }\n    ]\n}\n'''\n\n# Set custom properties in the dyncamic folder to include the following:\n# libreHostname: hostname of the libreNMS server\n# libreAPIKey: api key with read access to the libreNMS server. This should be a protected property\nHOSTNAME = '$CustomProperty.libreHostname$' \nAPI_KEY = '$CustomProperty.libreAPIKey$'\n\ndef get_libre_devices(hostname, api_key):\n    uri = f'http://{hostname}/api/v0/devices'\n    payload = {}\n    headers = {'X-Auth-Token': api_key}\n\n    response = requests.request('GET', uri, headers=headers)\n\n    # Raise error if response not 200\n    response.raise_for_status()\n\n    try:\n        devices = response.json()['devices']\n        return devices\n    except Exception as e:\n        print('Error: No Devices were able to be loaded.')\n        print(e)\n        return []\n    \n\n\ndef cleanup_devices(devices):\n    '''\n    Cleanup function to remove or rename devices returned by LibreNMS.\n    Currently removes all linux and panos devices.\n    '''\n    hosts = []\n    try:\n        for d in devices:\n            if 'nux' not in d['os'] and 'pan' not in d['os']:\n                hosts.append({\n                    'name': d['hostname'],\n                    'ip': d['ip'],\n                })\n    except Exception as e:\n        print('Error: {e}')\n        raise Exception('Unable to read devices, expecting list of maps')\n\n    return hosts\n\n\ndef convert_to_rjson(devices):\n    '''\n    Return single ssh connections in the root object.\n    '''\n    rjson = {\n        'Objects': []\n    }\n    for d in devices:\n        rjson['Objects'].append(\n            {\n                \"Type\": \"TerminalConnection\",\n                \"TerminalConnectionType\": \"SSH\",\n                \"Name\": d['name'],\n                \"ComputerName\": d['ip'],\n                \"CredentialsFromParent\": True,\n            }\n        )\n    return rjson\n\n\n\ndef main():\n    rjson = convert_to_rjson((cleanup_devices(get_libre_devices(HOSTNAME, API_KEY))))\n    print(json.dumps(rjson))\n\nif __name__ == \"__main__\":\n    main()"
+    }
+  ]
+}
